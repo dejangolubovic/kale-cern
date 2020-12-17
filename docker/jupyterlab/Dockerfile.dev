@@ -14,13 +14,17 @@
 
 # Use tensorflow-1.14.0 as a base image, allowing the user to
 # speficy if they want GPU support, by setting IMAGE_TYPE to "gpu".
-ARG IMAGE_TYPE="cpu"
-FROM gcr.io/kubeflow-images-public/tensorflow-1.14.0-notebook-${IMAGE_TYPE}:v0.7.0
+ARG IMAGE_TYPE="gpu"
+ARG IMAGE_TAG="1.0.0"
+ARG TENSORFLOW_VERSION="1.15.2"
+FROM gcr.io/kubeflow-images-public/tensorflow-${TENSORFLOW_VERSION}-notebook-${IMAGE_TYPE}:${IMAGE_TAG}
 
 USER root
 
 # Install basic dependencies
-RUN apt-get update && \
+RUN apt-get -qq update && \
+    apt-get -yqq install libpam-krb5 krb5-user && \
+    apt-get -yqq clean && \
     apt-get install -y --no-install-recommends \
         ca-certificates bash-completion tar less \
         python-pip python-setuptools build-essential python-dev \
@@ -28,16 +32,24 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV SHELL /bin/bash
-COPY bashrc /etc/bash.bashrc
+COPY docker/jupyterlab/bashrc /etc/bash.bashrc
 RUN echo "set background=dark" >> /etc/vim/vimrc.local
+
+# Install other pip requirements
+COPY docker/jupyterlab/requirements.txt /requirements.txt
+RUN pip3 install -r /requirements.txt
 
 # Install latest KFP SDK
 RUN pip3 install --upgrade pip && \
-    pip3 install --upgrade "jupyterlab>=2.0.0,<3.0.0" && \
-    pip3 install https://storage.googleapis.com/ml-pipeline/release/latest/kfp.tar.gz --upgrade
+    pip3 install --upgrade "jupyterlab" && \
+    pip3 uninstall -y enum34 && \
+    python3 -m pip install kfp kfp-server-api --pre --upgrade
+    #pip3 install https://storage.googleapis.com/ml-pipeline/release/latest/kfp.tar.gz --upgrade
+
+COPY docker/jupyterlab/krb5.conf /etc/krb5.conf
 
 # Install Kale from KALE_BRANCH (defaults to "master")
-ARG KALE_BRANCH="master"
+ARG KALE_BRANCH="v0.5.1"
 WORKDIR /
 RUN git clone -b ${KALE_BRANCH} https://github.com/kubeflow-kale/kale
 
@@ -50,6 +62,11 @@ RUN jlpm install && \
     jupyter labextension install .
 
 RUN jupyter lab build --dev-build=False
+
+ENV NB_USER jovyan
+ENV HOME /home/$NB_USER
+RUN chown -R ${NB_USER}:users $HOME && \
+    mkdir /home/jovyan/test
 
 RUN echo "jovyan ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers.d/jovyan
 WORKDIR /home/jovyan
