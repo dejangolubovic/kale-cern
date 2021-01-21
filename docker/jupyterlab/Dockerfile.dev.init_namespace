@@ -1,0 +1,93 @@
+#  Copyright 2020 The Kale Authors
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+# Use tensorflow-1.14.0 as a base image, allowing the user to
+# speficy if they want GPU support, by setting IMAGE_TYPE to "gpu".
+ARG IMAGE_TYPE="gpu"
+ARG IMAGE_TAG="1.0.0"
+ARG TENSORFLOW_VERSION="1.15.2"
+FROM gcr.io/kubeflow-images-public/tensorflow-${TENSORFLOW_VERSION}-notebook-${IMAGE_TYPE}:${IMAGE_TAG}
+
+USER root
+
+# Install basic dependencies
+RUN apt-get -qq update && \
+    apt-get -yqq install libpam-krb5 krb5-user && \
+    apt-get -yqq clean && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates bash-completion tar less \
+        python-pip python-setuptools build-essential python-dev \
+        python3-pip python3-wheel && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV SHELL /bin/bash
+COPY docker/jupyterlab/bashrc /etc/bash.bashrc
+RUN echo "set background=dark" >> /etc/vim/vimrc.local
+
+# Install other pip requirements
+COPY docker/jupyterlab/requirements.txt /requirements.txt
+RUN pip3 install -r /requirements.txt
+
+# Install jupyterlab
+RUN pip3 install --upgrade pip && \
+    pip3 install --upgrade "jupyterlab>=2.0.0,<3.0.0" && \
+    pip3 uninstall -y enum34
+    #python3 -m pip install https://github.com/kubeflow/pipelines.git
+    #python3 -m pip install kfp kfp-server-api --pre --upgrade
+    #pip3 install https://storage.googleapis.com/ml-pipeline/release/latest/kfp.tar.gz --upgrade
+
+COPY docker/jupyterlab/krb5.conf /etc/krb5.conf
+
+# Install Kale from KALE_BRANCH (defaults to "master")
+#ARG KALE_BRANCH="v0.5.1"
+#WORKDIR /
+#RUN git clone -b ${KALE_BRANCH} https://github.com/kubeflow-kale/kale
+
+# Install Kale version 0.5.1
+COPY kale-0.5.1 /kale-0.5.1/
+WORKDIR /kale-0.5.1/backend
+RUN pip3 install -U .
+
+# Install labextensions
+WORKDIR /kale-0.5.1/labextension
+RUN jlpm install && \
+    jlpm run build && \
+    jupyter labextension install .
+
+RUN jupyter lab build --dev-build=False
+
+# Install KFP
+WORKDIR /
+RUN git clone https://github.com/kubeflow/pipelines.git
+WORKDIR /pipelines/sdk/python
+RUN pip3 install -U . --upgrade
+
+ENV NB_USER jovyan
+ENV HOME /home/$NB_USER
+RUN chown -R ${NB_USER}:users $HOME
+
+RUN echo "jovyan ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers.d/jovyan
+WORKDIR /home/jovyan
+#USER root
+
+COPY init_namespace.py /init_namespace.py
+ADD start_it.sh /
+RUN chmod +x /start_it.sh
+
+ADD start_jupyter.sh /
+RUN chmod +x /start_jupyter.sh
+
+#RUN ["python3", "/init_namespace.py"]
+
+CMD ["sh", "-c", "/start_it.sh"]
