@@ -57,6 +57,8 @@ COPY docker/jupyterlab/krb5.conf /etc/krb5.conf
 # Install Kale version 0.5.1
 COPY kale-0.5.1 /kale-0.5.1/
 WORKDIR /kale-0.5.1/backend
+#RUN sed -i 's/7a304af-feaafdd/2d0f237-9f74f267/g' /kale-0.5.1/backend/kale/rpc/katib.py
+RUN sed -i 's/gcr.io\/arrikto\/7a304af-feaafdd/gitlab-registry.cern.ch\/ai-ml\/images\/tensorflow-2.4.0-notebook-gpu:permissions_namespace_init_root_4/' /kale-0.5.1/backend/kale/rpc/katib.py
 RUN pip3 install -U .
 
 # Install labextensions
@@ -69,7 +71,14 @@ RUN jupyter lab build --dev-build=False
 
 # Install KFP
 WORKDIR /
-RUN git clone https://github.com/kubeflow/pipelines.git
+#RUN git clone https://github.com/kubeflow/pipelines.git
+COPY pipelines /pipelines/
+
+# kfp-server-apo
+WORKDIR /pipelines/backend/api/python_http_client
+RUN pip3 install -U . --upgrade
+
+# kfp
 WORKDIR /pipelines/sdk/python
 RUN pip3 install -U . --upgrade
 
@@ -79,7 +88,6 @@ RUN chown -R ${NB_USER}:users $HOME
 
 RUN echo "jovyan ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers.d/jovyan
 WORKDIR /home/jovyan
-#USER root
 
 COPY init_namespace.py /init_namespace.py
 ADD start_it.sh /
@@ -89,5 +97,5 @@ ADD start_jupyter.sh /
 RUN chmod +x /start_jupyter.sh
 
 #RUN ["python3", "/init_namespace.py"]
-
+USER root
 CMD ["sh", "-c", "/start_it.sh"]

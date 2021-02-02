@@ -81,7 +81,13 @@ RUN echo "jovyan ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers.d/jovyan
 WORKDIR /home/jovyan
 #USER root
 
-CMD ["sh", "-c", \
-     "jupyter lab --notebook-dir=/home/jovyan --ip=0.0.0.0 --no-browser \
-      --allow-root --port=8888 --LabApp.token='' --LabApp.password='' \
-      --LabApp.allow_origin='*' --LabApp.base_url=${NB_PREFIX}"]
+COPY init_namespace.py /init_namespace.py
+ADD start_it.sh /
+RUN chmod +x /start_it.sh
+
+ADD start_jupyter.sh /
+RUN chmod +x /start_jupyter.sh
+
+#RUN ["python3", "/init_namespace.py"]
+
+CMD ["sh", "-c", "/start_it.sh"]

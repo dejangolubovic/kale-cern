@@ -145,3 +145,4 @@ Currently installed git hooks:
 
 - `pre-commit`: Run a prettier check on staged files, using
   [pretty-quick](https://github.com/azz/pretty-quick)
+# kale-cern
